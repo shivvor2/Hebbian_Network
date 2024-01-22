@@ -2,6 +2,8 @@
 
 Saw [this video](https://www.youtube.com/watch?v=piF6D6CQxUw) and decided to build one myself.
 
+We only use numpy for logic, no other ML libraries are used :D
+
 Generally, A hopfield network (as described) is made up of a "grid" of fully connected neurons, each neuron taking the state of other neurons as input and changes it's own state accordingly.
 
 To be more specific, given a hopfield network $G(V,E)$:
@@ -19,5 +21,3 @@ f(x)=
 \end{cases}
 $$
 5. The vertexs updates asynchronously
-
-Of course, we will flip some of those statements on it's head, which made some of the statements (and implementation of the hopfield network) wierd
