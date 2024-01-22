@@ -11,5 +11,5 @@ To be more specific, given a hopfield network $G(V,E)$:
 2. For vertex v_i, it is assigned a value 1 or -1.
 3. We assign a weight matrix $W$ of $|E|$ (= $|V| \cdot |V|$ when vertex is FC). $W[i,j]$ corresponds to the edgeweight of edge $e[v_i, v_j]$
 4. For vertex v_i, the update rule is
-$f(\sum_{k: e \{v_k, v_i\} \in E}w_{ki} v_k)$ where $f(x) = 1$ if $X > 0$ and $f(x) = 0$ otherwise 
+$f(\sum_{k: e \{ v_k, v_i \} \in E}w_{ki} v_k)$ where $f(x) = 1$ if $X > 0$ and $f(x) = 0$ otherwise 
 6. The vertexs updates asynchronously
