@@ -11,11 +11,11 @@ class HopNetBuilder:
     def __init__(self, size: int = None, dims: np.ndarray = None, context_dims: int | np.ndarray = None, verbose = True, interpolate = False):
         self.dims = self.__set_dims(size, dims)
         self.memory = [] # List of memory matrices
-        self.context_dims = context_dims
+        self.context_dims = self.__set_context_dims(context_dims)
         self.verbose = verbose
         self.interpolate = interpolate
         
-    def add_memory(self, matrix: np.ndarray):
+    def memory_add(self, matrix: np.ndarray):
         # Check if matrix is binary
         new_memory = matrix
         if not np.all(np.logical_or(new_memory == 1, new_memory == -1)):
@@ -62,6 +62,20 @@ class HopNetBuilder:
             case _:
                 raise ValueError("Must provide either size or dims, not both")
     
+    def __set_context_dims(self, context_dims):
+        match context_dims:
+            case None:
+                return None
+            case k if isinstance(k, int):
+                return np.array([context_dims, context_dims])
+            case np.ndarray:
+                if context_dims.shape == (2,2):
+                    return context_dims
+                else:
+                    raise ValueError("Context dimensions must be 2x2")
+            case _:
+                raise ValueError("Context dimensions must be an integer or a 2x2 matrix")
+    
     def __get_weights(self):
         if self.dims is None:
             raise ValueError("No memories or dimensions provided")
@@ -82,7 +96,7 @@ class HopNet:
     
     def __init__(self, dims: np.array, weights: np.ndarray | str = "random", init_state: np.ndarray | str = "random", context_dims: int | np.ndarray = None, show_steps = True, verbose = True):   
         # Excemption testing
-        if weights != "random" and np.array(dims).prod() != weights.shape[0]: # We assign weights between "all pairs" of vertices
+        if weights != "random" and int(np.array(dims).prod()) != weights.shape[0]: # We assign weights between "all pairs" of vertices
             raise ValueError("Mismatch between number of vertices and edges")
         if init_state != "random" and dims.shape != init_state.shape:
             raise ValueError("Mismatch between number of vertices and initial state")
@@ -101,20 +115,16 @@ class HopNet:
         self.state = self.__set_state(state)
         
     def update(self, wait = 0.1, max_iter = 10000):
+        prev_state = None
         for i in range(max_iter):
             clear_output()
-            updated = True
-            updated = self.update_async(wait = wait)
-            # Add back if reimplement sync
-            # if sync:
-            #     updated = self.update_sync()
-            # else:
-            #     updated = self.update_async(wait = wait)
+            prev_state = np.array(self.state) # Deep copy
+            self.update_async(wait = wait)
             if self.show_steps:
                 self.show_state()
-            if not updated:
+            if np.array_equal(self.state,prev_state):
                 clear_output()
-                self.__print_v("Convergence Reached at iteration {i}".format(i = i))
+                self.__print_v("Convergence Reached at iteration {i}".format(i = i-1))
                 self.show_state()
                 break 
             time.sleep(wait)
@@ -128,34 +138,14 @@ class HopNet:
                     self.show_state()
                     time.sleep(wait)
                     clear_output()
-                    
-        # Check if updated
-        if np.array_equal(self.state,prev_state):
-            return False
-        return True
-              
-              
-    # There is a stalling problem with this one  
-    #
-    # def update_sync(self):
-    #     new_state = np.zeros(self.dims)
-    #     for i in range(self.dims[0]):
-    #         for j in range(self.dims[1]):
-    #             new_state[i,j] = self.__updated_neuron_value(i,j)
-        
-    #     # Check if updated
-    #     if np.array_equal(self.state, new_state):
-    #         return False
-    #     self.state = new_state
-    #     return True
     
     def __updated_neuron_value(self, this_i, this_j):
         this_vertex_i = this_i * self.dims[1] + this_j
         
-        start_i = max(0, this_i - self.context_window[0])
-        end_i = min(self.state.shape[0], this_i + self.context_window[0] + 1)
-        start_j = max(0, this_j - self.context_window[1])
-        end_j = min(self.state.shape[1], this_j + self.context_window[1] + 1)
+        start_i = max(0, this_i - self.context_window[0][0])
+        end_i = min(self.state.shape[0], this_i + self.context_window[0][0] + 1)
+        start_j = max(0, this_j - self.context_window[1][0])
+        end_j = min(self.state.shape[1], this_j + self.context_window[1][1] + 1)
 
         sum = 0
         for i in range(start_i, end_i):
@@ -198,15 +188,21 @@ class HopNet:
             return state
         raise ValueError("Provided initial state must be a numpy array")
     
+    
+    # Yes, I did not check for negative values of context_dims, but its fine, 
+    # If negative values are used for, say, the left bound, it just means that the context window will completely reside on the right side of the neuron
+    # We trim the context window in the update function to prevent oob anyways.
     def __set_context_dims(self, context_dims):
         ctxt_dims = context_dims
         if context_dims is None:
-            ctxt_dims = np.array([self.dims[0], self.dims[1]])
+            ctxt_dims = np.array([[self.dims[0],self.dims[0]], [self.dims[1],self.dims[1]]])
         elif isinstance(ctxt_dims, int):
-            ctxt_dims = np.array([ctxt_dims, ctxt_dims])
+            ctxt_dims = np.array([[ctxt_dims, ctxt_dims],[ctxt_dims, ctxt_dims]])
+        elif ctxt_dims.shape == (2,2) and np.all(ctxt_dims > 0):
+            ctxt_dims[0][0] = min(ctxt_dims[0][0], self.dims[0])
+            ctxt_dims[0][1] = min(ctxt_dims[0][1], self.dims[0])
+            ctxt_dims[1][0] = min(ctxt_dims[1][0], self.dims[1])
+            ctxt_dims[1][1] = min(ctxt_dims[1][1], self.dims[1])
         else:
-            if ctxt_dims[0] > self.dims[0]:
-                ctxt_dims[0] = self.dims[0]
-            if ctxt_dims[1] > self.dims[1]:
-                ctxt_dims[1] = self.dims[1]
+            raise ValueError("Context dimensions must be an integer or a positive 2x2 matrix")
         return ctxt_dims
